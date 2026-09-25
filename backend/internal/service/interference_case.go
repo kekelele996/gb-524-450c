@@ -38,6 +38,8 @@ func (s *CaseService) List(ctx context.Context, page, pageSize int, status strin
 			FrequencyCenterHz: item.FrequencyCenterHz, CaseStatus: item.CaseStatus,
 			Priority: item.Priority, Version: item.Version, Conclusion: item.Conclusion,
 			ObservationCount: observations, ActiveObservationCount: active, EstimateCount: estimates,
+			ReviewBasisEstimateID: item.ReviewBasisEstimateID, ReviewBasisStale: item.ReviewBasisStale,
+			ReviewBasisInvalidatedAt: item.ReviewBasisInvalidatedAt,
 		})
 	}
 	return result, total, nil
@@ -86,6 +88,16 @@ func (s *CaseService) Transition(ctx context.Context, id uint, request dto.Trans
 		return model.InterferenceCase{}, api.WithDetails(api.NewError(409, "REVIEW_EVIDENCE_INCOMPLETE", "提交复核前至少需要三条有效观测和一条定位结果"), map[string]any{
 			"active_observations": active, "estimates": estimates,
 		})
+	}
+	if request.TargetStatus == constants.CasePendingReview {
+		if current.ReviewBasisEstimateID == nil {
+			return model.InterferenceCase{}, api.NewError(409, "REVIEW_BASIS_REQUIRED", "提交复核前必须先在定位页选定一条定位结果作为复核依据")
+		}
+		if current.ReviewBasisStale {
+			return model.InterferenceCase{}, api.WithDetails(api.NewError(409, "REVIEW_BASIS_STALE", "观测集已变化或案例被退回，原复核依据已失效，请重新运行定位并重新选定依据"), map[string]any{
+				"review_basis_estimate_id": *current.ReviewBasisEstimateID,
+			})
+		}
 	}
 	conclusion := strings.TrimSpace(request.Conclusion)
 	reason := strings.TrimSpace(request.Reason)

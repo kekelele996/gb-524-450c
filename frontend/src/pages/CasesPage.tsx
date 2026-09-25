@@ -41,6 +41,9 @@ export function CasesPage() {
     return map
   }, [estimates])
 
+  const estimateById = useMemo(() => new Map(estimates.map((estimate) => [estimate.id, estimate])), [estimates])
+  const reviewBasis = reviewTarget?.review_basis_estimate_id ? estimateById.get(reviewTarget.review_basis_estimate_id) ?? null : null
+
   const create = async (event: FormEvent) => {
     event.preventDefault()
     setSaving(true)
@@ -86,7 +89,7 @@ export function CasesPage() {
         <Typography id="case-table-title" component="h2" variant="h6" mb={2}>案例、证据与乐观锁版本</Typography>
         <Box className="table-scroll">
           <Table size="small" aria-label="干扰案例列表">
-            <TableHead><TableRow><TableCell>案例</TableCell><TableCell>中心频率</TableCell><TableCell>状态 / 版本</TableCell><TableCell>证据完整度</TableCell><TableCell>最新定位</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell>案例</TableCell><TableCell>中心频率</TableCell><TableCell>状态 / 版本</TableCell><TableCell>证据完整度</TableCell><TableCell>复核依据</TableCell><TableCell>最新定位</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead>
             <TableBody>{cases.map((item) => {
               const estimate = latestByCase.get(item.id)
               return <TableRow key={item.id} hover>
@@ -94,6 +97,7 @@ export function CasesPage() {
                 <TableCell className="numeric">{formatFrequency(item.frequency_center_hz)}<br /><span className={`priority priority-${item.priority}`}>{item.priority === 'high' ? '高优先' : item.priority === 'low' ? '低优先' : '普通'}</span></TableCell>
                 <TableCell><span className={`case-status case-${item.case_status}`}>{item.case_status === 'closed' && <LockRounded fontSize="inherit" />} {statusLabel[item.case_status]}</span><br /><span className="secondary-text">version {item.version}</span></TableCell>
                 <TableCell className="numeric">有效观测 {item.active_observation_count} / {item.observation_count}<br />定位结果 {item.estimate_count}</TableCell>
+                <TableCell><BasisStatus item={item} /></TableCell>
                 <TableCell>{estimate ? <><strong>残差 {formatDecimal(estimate.residual_deg)}°</strong><br /><span className="secondary-text">半径 {formatDecimal(estimate.uncertainty_radius_m, 0)} m</span></> : '尚未运行'}</TableCell>
                 <TableCell align="right">
                   <Stack direction="row" justifyContent="flex-end" gap={1}>
@@ -122,8 +126,21 @@ export function CasesPage() {
         </form>
       </Dialog>
 
-      <ReviewDecisionDialog open={Boolean(reviewTarget)} item={reviewTarget} onClose={() => setReviewTarget(null)} onDecision={async (request) => { if (reviewTarget) await transition(reviewTarget.id, request) }} />
+      <ReviewDecisionDialog open={Boolean(reviewTarget)} item={reviewTarget} basis={reviewBasis} onClose={() => setReviewTarget(null)} onDecision={async (request) => { if (reviewTarget) await transition(reviewTarget.id, request) }} />
     </>
   )
+}
+
+function BasisStatus({ item }: { item: CaseSummary }) {
+  if (item.review_basis_estimate_id && !item.review_basis_stale) {
+    return <span className="basis-badge basis-valid">依据 #{item.review_basis_estimate_id}</span>
+  }
+  if (item.review_basis_estimate_id && item.review_basis_stale) {
+    return <span className="basis-badge basis-stale">依据 #{item.review_basis_estimate_id} 已失效<br />需重跑并重新选定</span>
+  }
+  if (item.case_status === 'analyzing') {
+    return <span className="secondary-text">未选定依据</span>
+  }
+  return <span className="secondary-text">—</span>
 }
 

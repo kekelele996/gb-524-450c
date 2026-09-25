@@ -17,10 +17,14 @@ type InterferenceCase struct {
 	ReviewerID        *uint                `json:"reviewer_id"`
 	Conclusion        string               `json:"conclusion" gorm:"size:2000"`
 	ReviewReason      string               `json:"review_reason" gorm:"size:1000"`
-	Version           uint                 `json:"version" gorm:"not null;default:1"`
-	ClosedAt          *time.Time           `json:"closed_at"`
-	CreatedAt         time.Time            `json:"created_at"`
-	UpdatedAt         time.Time            `json:"updated_at"`
+	// ReviewBasisEstimateID 指向分析员选定的复核依据定位结果；失效后保留 ID 供对照。
+	ReviewBasisEstimateID    *uint      `json:"review_basis_estimate_id" gorm:"index"`
+	ReviewBasisStale         bool       `json:"review_basis_stale" gorm:"not null;default:false"`
+	ReviewBasisInvalidatedAt *time.Time `json:"review_basis_invalidated_at"`
+	Version                  uint       `json:"version" gorm:"not null;default:1"`
+	ClosedAt                 *time.Time `json:"closed_at"`
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
 }
 
 func (InterferenceCase) TableName() string { return "interference_cases" }

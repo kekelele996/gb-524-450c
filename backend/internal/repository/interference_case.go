@@ -89,6 +89,12 @@ func (r *CaseRepository) Transition(ctx context.Context, id uint, version uint, 
 		if reviewerID != nil {
 			updates["reviewer_id"] = *reviewerID
 		}
+		if before.CaseStatus == constants.CasePendingReview && target == constants.CaseAnalyzing && before.ReviewBasisEstimateID != nil {
+			// 退回保留上次依据 ID 供对照，但标记失效，必须重新运行并重新选定后才能再次提交。
+			now := time.Now().UTC()
+			updates["review_basis_stale"] = true
+			updates["review_basis_invalidated_at"] = now
+		}
 		if target == constants.CaseClosed {
 			now := time.Now().UTC()
 			updates["closed_at"] = &now
@@ -124,4 +130,44 @@ func (r *CaseRepository) Counts(ctx context.Context, caseID uint) (observations,
 		return 0, 0, 0, fmt.Errorf("count estimates: %w", err)
 	}
 	return observations, active, estimates, nil
+}
+
+// invalidateReviewBasis 在观测集变化（新增或排除观测）时让已选定的复核依据失效。
+// 依据 ID 保留供对照，只有重新运行定位并重新选定后才能提交复核。
+// 必须在持有 caseRecord 所在事务内调用。
+func invalidateReviewBasis(tx *gorm.DB, caseID uint, trigger string, actor Actor) error {
+	var caseRecord model.InterferenceCase
+	if err := tx.First(&caseRecord, caseID).Error; err != nil {
+		return fmt.Errorf("load case for review basis invalidation: %w", err)
+	}
+	if caseRecord.ReviewBasisEstimateID == nil || caseRecord.ReviewBasisStale {
+		return nil
+	}
+	now := time.Now().UTC()
+	result := tx.Model(&model.InterferenceCase{}).
+		Where("id = ? AND review_basis_stale = ?", caseID, false).
+		Updates(map[string]any{
+			"review_basis_stale": true, "review_basis_invalidated_at": now,
+			"version": gorm.Expr("version + 1"),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("invalidate review basis: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return api.NewError(409, "CASE_VERSION_CONFLICT", "案例被其他请求更新，请刷新后重试")
+	}
+	before := map[string]any{
+		"review_basis_estimate_id": *caseRecord.ReviewBasisEstimateID,
+		"review_basis_stale":       false,
+	}
+	after := map[string]any{
+		"review_basis_estimate_id": *caseRecord.ReviewBasisEstimateID,
+		"review_basis_stale":       true,
+		"invalidated_by":           trigger,
+	}
+	audit := NewAudit(actor, "interference_case.review_basis_invalidated", "interference_case", caseID, before, after)
+	if err := tx.Create(&audit).Error; err != nil {
+		return fmt.Errorf("audit review basis invalidation: %w", err)
+	}
+	return nil
 }

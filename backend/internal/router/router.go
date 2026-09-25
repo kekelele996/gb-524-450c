@@ -61,6 +61,7 @@ func New(log *slog.Logger, authService *service.AuthService, handlers Handlers, 
 	protected.GET("/localizations", handlers.Estimate.List)
 	protected.GET("/localizations/:id", handlers.Estimate.Get)
 	protected.POST("/localizations/run", localizationLimiter.Middleware("localization"), middleware.RBAC(constants.RoleAnalyst, constants.RoleAdmin), handlers.Estimate.Run)
+	protected.POST("/cases/:id/review-basis", middleware.RBAC(constants.RoleAnalyst, constants.RoleAdmin), handlers.Estimate.SelectBasis)
 
 	protected.GET("/audits", middleware.RBAC(constants.RoleReviewer, constants.RoleAdmin), handlers.Support.ListAudits)
 	return engine

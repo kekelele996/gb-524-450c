@@ -12,6 +12,9 @@ export interface InterferenceCase {
   reviewer_id: number | null
   conclusion: string
   review_reason: string
+  review_basis_estimate_id: number | null
+  review_basis_stale: boolean
+  review_basis_invalidated_at: string | null
   version: number
   closed_at: string | null
   created_at: string
@@ -30,6 +33,9 @@ export interface CaseSummary {
   active_observation_count: number
   estimate_count: number
   conclusion: string
+  review_basis_estimate_id: number | null
+  review_basis_stale: boolean
+  review_basis_invalidated_at: string | null
 }
 
 export interface CaseInput {

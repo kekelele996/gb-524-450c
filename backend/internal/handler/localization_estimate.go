@@ -58,3 +58,24 @@ func (h *EstimateHandler) Run(c *gin.Context) {
 	}
 	api.Success(c, http.StatusCreated, result)
 }
+
+func (h *EstimateHandler) SelectBasis(c *gin.Context) {
+	caseID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	var request dto.SelectReviewBasisRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+	updated, err := h.service.SelectReviewBasis(c.Request.Context(), caseID, request, actor)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.Success(c, http.StatusOK, updated)
+}

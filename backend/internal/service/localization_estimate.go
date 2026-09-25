@@ -42,6 +42,13 @@ func (s *EstimateService) Get(ctx context.Context, id uint) (model.LocalizationE
 	return s.repo.Get(ctx, id)
 }
 
+func (s *EstimateService) SelectReviewBasis(ctx context.Context, caseID uint, request dto.SelectReviewBasisRequest, actor repository.Actor) (model.InterferenceCase, error) {
+	if !constants.CanAnalyze(actor.Role) {
+		return model.InterferenceCase{}, api.ErrForbidden
+	}
+	return s.repo.SelectReviewBasis(ctx, caseID, request.EstimateID, request.Version, actor)
+}
+
 func (s *EstimateService) Run(ctx context.Context, request dto.RunLocalizationRequest, actor repository.Actor) (RunResult, error) {
 	if !constants.CanAnalyze(actor.Role) {
 		return RunResult{}, api.ErrForbidden

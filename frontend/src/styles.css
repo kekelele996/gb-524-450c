@@ -80,6 +80,11 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.8rem; }
 .estimate-item { width: 100%; min-height: 96px; display: grid; gap: 6px; padding: 12px; text-align: left; color: #315047; background: #fbfcf9; border: 1px solid #cbd8d0; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease-out, background-color 160ms ease-out; }
 .estimate-item:hover { border-color: #5d8175; background: #f2f7f3; }
 .estimate-item.is-selected { border: 2px solid #1d5d50; background: #e4eee8; }
+.estimate-item-wrap { display: grid; gap: 6px; padding: 6px; border: 1px solid transparent; border-radius: 6px; }
+.estimate-item-wrap.is-basis { border-color: #2c6b4d; background: #eef5ef; }
+.basis-badge { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 0.68rem; font-style: normal; font-weight: 700; }
+.basis-valid { color: #1f5c3d; background: #d9ead9; border: 1px solid #9fc3a8; }
+.basis-stale { color: #8a4a12; background: #f7e4cf; border: 1px solid #ddb287; }
 .estimate-item-top { display: flex; justify-content: space-between; gap: 8px; }
 .estimate-item-top span { color: #a15924; font-size: 0.72rem; }
 .estimate-coordinate { font-size: 0.78rem; }

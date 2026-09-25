@@ -85,6 +85,9 @@ func (r *ObservationRepository) Create(ctx context.Context, observation *model.B
 		if err := tx.Create(observation).Error; err != nil {
 			return fmt.Errorf("create observation: %w", err)
 		}
+		if err := invalidateReviewBasis(tx, observation.CaseID, "bearing_observation.created", actor); err != nil {
+			return err
+		}
 		audit := NewAudit(actor, "bearing_observation.created", "bearing_observation", observation.ID, nil, observation)
 		if err := tx.Create(&audit).Error; err != nil {
 			return fmt.Errorf("audit observation create: %w", err)
@@ -124,6 +127,9 @@ func (r *ObservationRepository) Exclude(ctx context.Context, id uint, reason str
 		}
 		if err := tx.First(&updated, id).Error; err != nil {
 			return fmt.Errorf("reload excluded observation: %w", err)
+		}
+		if err := invalidateReviewBasis(tx, before.CaseID, "bearing_observation.excluded", actor); err != nil {
+			return err
 		}
 		audit := NewAudit(actor, "bearing_observation.excluded", "bearing_observation", id, before, updated)
 		if err := tx.Create(&audit).Error; err != nil {

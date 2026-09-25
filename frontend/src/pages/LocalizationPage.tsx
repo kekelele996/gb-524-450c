@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded'
 import ScienceRounded from '@mui/icons-material/ScienceRounded'
+import VerifiedRounded from '@mui/icons-material/VerifiedRounded'
 import { Alert, Box, Button, FormControlLabel, MenuItem, Stack, Switch, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material'
 import { BearingPlot } from '../components/common/BearingPlot'
 import { PageHeader } from '../components/common/PageHeader'
@@ -11,6 +12,7 @@ import { useCaseStore } from '../stores/caseStore'
 import { useLocalizationStore } from '../stores/localizationStore'
 import { useObservationStore } from '../stores/observationStore'
 import { useStationStore } from '../stores/stationStore'
+import type { CaseSummary } from '../types/case'
 import type { LocalizationEstimate } from '../types/localization'
 import { formatCoordinate, formatDateTime, formatDecimal, formatFrequency } from '../utils/format'
 
@@ -26,6 +28,8 @@ export function LocalizationPage() {
   const selected = useLocalizationStore((state) => state.selected)
   const select = useLocalizationStore((state) => state.select)
   const loadEstimates = useLocalizationStore((state) => state.load)
+  const selectBasis = useLocalizationStore((state) => state.selectBasis)
+  const basisBusy = useLocalizationStore((state) => state.basisBusy)
   const { execute, busy, lastResult } = useLocalizationRun()
   const [caseId, setCaseId] = useState(0)
   const [allowOutlier, setAllowOutlier] = useState(true)
@@ -48,10 +52,17 @@ export function LocalizationPage() {
   const selectedCase = cases.find((item) => item.id === caseId)
   const residuals = selected?.residuals_json ?? []
   const observationById = useMemo(() => new Map(observations.map((item) => [item.id, item])), [observations])
+  const canSelectBasis = hasRole('analyst', 'admin') && selectedCase?.case_status === 'analyzing'
 
   const run = async () => {
     if (!caseId) return
     await execute(caseId, allowOutlier)
+    await loadCases()
+  }
+
+  const chooseBasis = async (estimate: LocalizationEstimate) => {
+    if (!selectedCase) return
+    await selectBasis(selectedCase.id, estimate.id, selectedCase.version)
     await loadCases()
   }
 
@@ -72,6 +83,7 @@ export function LocalizationPage() {
         {lastResult?.candidate && <Alert severity="warning">已保留原估计，并生成剔除观测 #{lastResult.candidate.outlier_ids_json[0]} 的候选重算。</Alert>}
       </section>
 
+      {selectedCase && <BasisStatusBanner item={selectedCase} />}
       <Alert severity="info" icon={<ScienceRounded />} className="safety-alert">估计坐标、不确定半径和离群候选均为离线模型证据，必须与原始方位线和残差共同复核。</Alert>
 
       <section className="localization-grid">
@@ -81,7 +93,18 @@ export function LocalizationPage() {
         <aside className="estimate-rail" aria-label="定位结果历史">
           <Typography component="h2" variant="h6">不可覆盖的运行历史</Typography>
           <Stack gap={1.5} mt={2}>
-            {estimates.map((estimate) => <EstimateButton key={estimate.id} estimate={estimate} selected={selected?.id === estimate.id} onClick={() => select(estimate)} />)}
+            {estimates.map((estimate) => (
+              <EstimateButton
+                key={estimate.id}
+                estimate={estimate}
+                selected={selected?.id === estimate.id}
+                basisState={basisStateOf(estimate, selectedCase)}
+                outdated={isOutdated(estimate, selectedCase)}
+                canSelectBasis={Boolean(canSelectBasis) && !basisBusy}
+                onClick={() => select(estimate)}
+                onSelectBasis={() => void chooseBasis(estimate)}
+              />
+            ))}
             {estimates.length === 0 && <Typography color="text.secondary">尚无运行结果。有效观测满足几何条件后可运行定位。</Typography>}
           </Stack>
         </aside>
@@ -116,13 +139,70 @@ export function LocalizationPage() {
   )
 }
 
-function EstimateButton({ estimate, selected, onClick }: { estimate: LocalizationEstimate; selected: boolean; onClick: () => void }) {
-  return (
-    <button type="button" className={`estimate-item ${selected ? 'is-selected' : ''}`} onClick={onClick}>
-      <span className="estimate-item-top"><strong>运行 #{estimate.id}</strong><span>{estimate.estimate_status === 'outlier_candidate' ? '△ 离群候选' : '◆ 原始估计'}</span></span>
-      <span className="estimate-coordinate">{formatCoordinate(estimate.latitude)}, {formatCoordinate(estimate.longitude)}</span>
-      <span className="estimate-metrics">残差 {formatDecimal(estimate.residual_deg)}° · 半径 {formatDecimal(estimate.uncertainty_radius_m, 0)} m</span>
-    </button>
-  )
+type BasisState = 'valid' | 'stale' | null
+
+function basisStateOf(estimate: LocalizationEstimate, item: CaseSummary | undefined): BasisState {
+  if (!item || item.review_basis_estimate_id !== estimate.id) return null
+  return item.review_basis_stale ? 'stale' : 'valid'
 }
 
+function isOutdated(estimate: LocalizationEstimate, item: CaseSummary | undefined): boolean {
+  if (!item?.review_basis_invalidated_at) return false
+  return new Date(estimate.created_at).getTime() <= new Date(item.review_basis_invalidated_at).getTime()
+}
+
+function BasisStatusBanner({ item }: { item: CaseSummary }) {
+  if (item.review_basis_estimate_id && !item.review_basis_stale) {
+    return <Alert severity="success" icon={<VerifiedRounded />} className="safety-alert">当前复核依据：运行 #{item.review_basis_estimate_id}。提交复核后复核员将以该结果为准。</Alert>
+  }
+  if (item.review_basis_estimate_id && item.review_basis_stale) {
+    return (
+      <Alert severity="warning" className="safety-alert">
+        原复核依据（运行 #{item.review_basis_estimate_id}）已失效：观测集发生变化或案例被退回，原结果仅保留供对照。
+        案例当前不能提交复核，请重新运行加权定位，并在新结果中重新选定一条作为复核依据。
+      </Alert>
+    )
+  }
+  if (item.case_status === 'analyzing') {
+    return <Alert severity="info" className="safety-alert">尚未选定复核依据。提交复核前，分析员必须在下方运行历史中选定一条定位结果作为复核依据。</Alert>
+  }
+  return null
+}
+
+interface EstimateButtonProps {
+  estimate: LocalizationEstimate
+  selected: boolean
+  basisState: BasisState
+  outdated: boolean
+  canSelectBasis: boolean
+  onClick: () => void
+  onSelectBasis: () => void
+}
+
+function EstimateButton({ estimate, selected, basisState, outdated, canSelectBasis, onClick, onSelectBasis }: EstimateButtonProps) {
+  return (
+    <div className={`estimate-item-wrap ${basisState === 'valid' ? 'is-basis' : ''}`}>
+      <button type="button" className={`estimate-item ${selected ? 'is-selected' : ''}`} onClick={onClick}>
+        <span className="estimate-item-top">
+          <strong>运行 #{estimate.id}</strong>
+          <span>
+            {basisState === 'valid' && <em className="basis-badge basis-valid">复核依据</em>}
+            {basisState === 'stale' && <em className="basis-badge basis-stale">已失效 · 供对照</em>}
+            {estimate.estimate_status === 'outlier_candidate' ? '△ 离群候选' : '◆ 原始估计'}
+          </span>
+        </span>
+        <span className="estimate-coordinate">{formatCoordinate(estimate.latitude)}, {formatCoordinate(estimate.longitude)}</span>
+        <span className="estimate-metrics">残差 {formatDecimal(estimate.residual_deg)}° · 半径 {formatDecimal(estimate.uncertainty_radius_m, 0)} m</span>
+      </button>
+      {canSelectBasis && basisState !== 'valid' && (
+        <Button
+          size="small" variant="outlined" fullWidth disabled={outdated}
+          title={outdated ? '该结果早于依据失效时间，请重新运行定位后再选定' : '将该结果作为提交复核的唯一依据'}
+          onClick={onSelectBasis}
+        >
+          {outdated ? '需重新运行后选定' : '选定为复核依据'}
+        </Button>
+      )}
+    </div>
+  )
+}

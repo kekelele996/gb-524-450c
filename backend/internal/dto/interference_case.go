@@ -1,6 +1,10 @@
 package dto
 
-import "spectrum-interference-triangulation/backend/internal/constants"
+import (
+	"time"
+
+	"spectrum-interference-triangulation/backend/internal/constants"
+)
 
 type CreateCaseRequest struct {
 	CaseCode          string  `json:"case_code" binding:"required,min=4,max=40"`
@@ -16,16 +20,24 @@ type TransitionCaseRequest struct {
 	Reason       string               `json:"reason" binding:"max=1000"`
 }
 
+type SelectReviewBasisRequest struct {
+	EstimateID uint `json:"estimate_id" binding:"required"`
+	Version    uint `json:"version" binding:"required"`
+}
+
 type CaseSummary struct {
-	ID                     uint                 `json:"id"`
-	CaseCode               string               `json:"case_code"`
-	Title                  string               `json:"title"`
-	FrequencyCenterHz      float64              `json:"frequency_center_hz"`
-	CaseStatus             constants.CaseStatus `json:"case_status"`
-	Priority               string               `json:"priority"`
-	Version                uint                 `json:"version"`
-	ObservationCount       int64                `json:"observation_count"`
-	ActiveObservationCount int64                `json:"active_observation_count"`
-	EstimateCount          int64                `json:"estimate_count"`
-	Conclusion             string               `json:"conclusion"`
+	ID                       uint                 `json:"id"`
+	CaseCode                 string               `json:"case_code"`
+	Title                    string               `json:"title"`
+	FrequencyCenterHz        float64              `json:"frequency_center_hz"`
+	CaseStatus               constants.CaseStatus `json:"case_status"`
+	Priority                 string               `json:"priority"`
+	Version                  uint                 `json:"version"`
+	ObservationCount         int64                `json:"observation_count"`
+	ActiveObservationCount   int64                `json:"active_observation_count"`
+	EstimateCount            int64                `json:"estimate_count"`
+	Conclusion               string               `json:"conclusion"`
+	ReviewBasisEstimateID    *uint                `json:"review_basis_estimate_id"`
+	ReviewBasisStale         bool                 `json:"review_basis_stale"`
+	ReviewBasisInvalidatedAt *time.Time           `json:"review_basis_invalidated_at"`
 }

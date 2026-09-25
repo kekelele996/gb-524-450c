@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,12 +11,14 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/datatypes"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	"spectrum-interference-triangulation/backend/internal/constants"
+	"spectrum-interference-triangulation/backend/internal/localization"
 	"spectrum-interference-triangulation/backend/internal/model"
 )
 
@@ -158,14 +161,60 @@ func seed(db *gorm.DB) error {
 			{StationID: stations[2].ID, CaseID: cases[0].ID, BearingDeg: 269.7, CorrectedBearingDeg: 269.8, SignalDBM: -64, FrequencyHz: 433920100, BandwidthHz: 12500, ObservedAt: now.Add(2 * time.Minute), Quality: constants.QualityFair, CreatedBy: users[0].ID},
 			{StationID: stations[3].ID, CaseID: cases[0].ID, BearingDeg: 205, CorrectedBearingDeg: 205, SignalDBM: -82, FrequencyHz: 433920500, BandwidthHz: 12500, ObservedAt: now.Add(3 * time.Minute), Quality: constants.QualityPoor, CreatedBy: users[0].ID},
 			{StationID: stations[0].ID, CaseID: cases[1].ID, BearingDeg: 92, CorrectedBearingDeg: 92.4, SignalDBM: -73, FrequencyHz: 868300000, BandwidthHz: 25000, ObservedAt: now, Quality: constants.QualityGood, CreatedBy: users[0].ID},
+			{StationID: stations[1].ID, CaseID: cases[1].ID, BearingDeg: 29.3, CorrectedBearingDeg: 29.0, SignalDBM: -76, FrequencyHz: 868300200, BandwidthHz: 25000, ObservedAt: now.Add(time.Minute), Quality: constants.QualityGood, CreatedBy: users[0].ID},
+			{StationID: stations[2].ID, CaseID: cases[1].ID, BearingDeg: 264.3, CorrectedBearingDeg: 264.4, SignalDBM: -70, FrequencyHz: 868299800, BandwidthHz: 25000, ObservedAt: now.Add(2 * time.Minute), Quality: constants.QualityFair, CreatedBy: users[0].ID},
+			{StationID: stations[3].ID, CaseID: cases[1].ID, BearingDeg: 154.5, CorrectedBearingDeg: 154.5, SignalDBM: -79, FrequencyHz: 868300100, BandwidthHz: 25000, ObservedAt: now.Add(3 * time.Minute), Quality: constants.QualityGood, CreatedBy: users[0].ID},
 		}
 		if err := tx.Create(&observations).Error; err != nil {
 			return err
 		}
+		// 待复核种子案例携带一份已选定的复核依据，演示“分析员选定 -> 复核员对照”的完整链路。
+		caseTwoObservations := observations[4:]
+		estimateInputs := make([]localization.Input, 0, len(caseTwoObservations))
+		for index, observation := range caseTwoObservations {
+			estimateInputs = append(estimateInputs, localization.Input{
+				ObservationID: observation.ID, StationCode: stations[index].StationCode,
+				Latitude: stations[index].Latitude, Longitude: stations[index].Longitude,
+				BearingDeg: observation.CorrectedBearingDeg, AccuracyDeg: stations[index].AccuracyDeg,
+				QualityWeight: constants.QualityWeight(observation.Quality),
+			})
+		}
+		snapshotJSON, err := json.Marshal(estimateInputs)
+		if err != nil {
+			return fmt.Errorf("marshal seed estimate snapshot: %w", err)
+		}
+		residualsJSON, err := json.Marshal([]localization.Residual{
+			{ObservationID: caseTwoObservations[0].ID, StationCode: stations[0].StationCode, ObservedDeg: 92.4, PredictedDeg: 92.55, ResidualDeg: -0.15, Standardized: -0.13},
+			{ObservationID: caseTwoObservations[1].ID, StationCode: stations[1].StationCode, ObservedDeg: 29.0, PredictedDeg: 29.18, ResidualDeg: -0.18, Standardized: -0.12},
+			{ObservationID: caseTwoObservations[2].ID, StationCode: stations[2].StationCode, ObservedDeg: 264.4, PredictedDeg: 264.22, ResidualDeg: 0.18, Standardized: 0.18},
+			{ObservationID: caseTwoObservations[3].ID, StationCode: stations[3].StationCode, ObservedDeg: 154.5, PredictedDeg: 154.31, ResidualDeg: 0.19, Standardized: 0.11},
+		})
+		if err != nil {
+			return fmt.Errorf("marshal seed estimate residuals: %w", err)
+		}
+		usedJSON, err := json.Marshal([]uint{caseTwoObservations[0].ID, caseTwoObservations[1].ID, caseTwoObservations[2].ID, caseTwoObservations[3].ID})
+		if err != nil {
+			return fmt.Errorf("marshal seed estimate observations: %w", err)
+		}
+		estimate := model.LocalizationEstimate{
+			CaseID: cases[1].ID, AlgorithmVersion: localization.AlgorithmVersion,
+			Latitude: 31.2289, Longitude: 121.4857, UncertaintyRadiusM: 215,
+			ResidualDeg: 0.42, ConditionNumber: 4.6, GeometryDegenerate: false,
+			UsedObservationIDsJSON: datatypes.JSON(usedJSON), OutlierIDsJSON: datatypes.JSON([]byte("[]")),
+			ResidualsJSON: datatypes.JSON(residualsJSON), InputSnapshotJSON: datatypes.JSON(snapshotJSON),
+			EstimateStatus: constants.EstimateComplete, CreatedBy: users[1].ID,
+		}
+		if err := tx.Create(&estimate).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.InterferenceCase{}).Where("id = ?", cases[1].ID).
+			Update("review_basis_estimate_id", estimate.ID).Error; err != nil {
+			return fmt.Errorf("attach seed review basis: %w", err)
+		}
 		return tx.Create(&model.AuditEvent{
 			RequestID: "seed-bootstrap", UserID: users[3].ID, ActorEmail: users[3].Email,
 			Action: "system.seeded", EntityType: "system", EntityID: 1,
-			BeforeJSON: "{}", AfterJSON: `{"stations":4,"cases":2,"observations":5}`,
+			BeforeJSON: "{}", AfterJSON: `{"stations":4,"cases":2,"observations":8,"estimates":1}`,
 			CreatedAt: time.Now().UTC(),
 		}).Error
 	})

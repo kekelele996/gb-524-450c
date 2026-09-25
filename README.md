@@ -41,6 +41,7 @@ docker compose down -v --remove-orphans
 - 在本地笛卡尔坐标图中显示测向站、方位射线、估计点、不确定区域、逐站残差和离群证据。
 - 二站几何交汇和三站以上加权最小二乘使用同一确定性求解器；近平行或近共线几何明确拒绝，不返回伪精确点。
 - 当至少有四条有效观测时，可比较标准化残差并生成一次离群候选重算；原估计和候选结果都不可覆盖。
+- 分析员必须选定一条定位结果作为复核依据，复核员按该结果复核；新增或排除观测会让依据失效，失效后不能提交复核，需重新运行并重新选定；案例被退回后保留上次依据供对照。
 - 案例执行 `draft -> collecting -> analyzing -> pending_review -> confirmed -> closed`；退回从 `pending_review` 回到 `analyzing`，关闭后只读。
 - JWT、RBAC、乐观锁、事务、内存令牌桶限流、request ID、结构化日志和不可变审计贯穿业务链。
 
@@ -104,6 +105,7 @@ docker compose down -v --remove-orphans
 | `POST` | `/api/v1/cases/:id/transition` | 带 version 的状态迁移 |
 | `GET` | `/api/v1/localizations` | 查询不可覆盖的定位历史 |
 | `POST` | `/api/v1/localizations/run` | 运行加权定位和离群候选，独立限流 |
+| `POST` | `/api/v1/cases/:id/review-basis` | 选定一条定位结果作为复核依据 |
 | `GET` | `/api/v1/audits` | 复核员/管理员查询不可变审计 |
 
 成功响应统一为 `{ data, request_id, meta? }`，错误响应为 `{ error: { code, message, details? }, request_id }`。分页使用 `page` 与 `page_size`，时间使用 RFC 3339 UTC。
@@ -188,6 +190,7 @@ npm --prefix frontend run build
 - 定位返回 `FREQUENCY_MISMATCH`：确认每条观测与案例中心频率的偏差不超过该观测带宽的一半。
 - 定位返回 `GEOMETRY_DEGENERATE`：增加不同方位几何的测向站，不能通过放宽显示精度规避退化证据。
 - 状态迁移返回 `CASE_VERSION_CONFLICT`：其他请求已更新案例，刷新列表后使用新 version 重试。
+- 提交复核返回 `REVIEW_BASIS_REQUIRED` / `REVIEW_BASIS_STALE`：先在定位页选定一条定位结果作为复核依据；观测新增、排除或案例退回会让原依据失效，必须重新运行定位并重新选定。
 - 登录后出现 401：清除当前标签页 `sessionStorage` 后重新登录；令牌不会持久化到其他浏览器会话。
 
 ## License

@@ -3,15 +3,18 @@ import GavelRounded from '@mui/icons-material/GavelRounded'
 import ReplayRounded from '@mui/icons-material/ReplayRounded'
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material'
 import type { CaseSummary, CaseTransition } from '../../types/case'
+import type { LocalizationEstimate } from '../../types/localization'
+import { formatDecimal } from '../../utils/format'
 
 interface ReviewDecisionDialogProps {
   open: boolean
   item: CaseSummary | null
+  basis?: LocalizationEstimate | null
   onClose: () => void
   onDecision: (transition: CaseTransition) => Promise<void>
 }
 
-export function ReviewDecisionDialog({ open, item, onClose, onDecision }: ReviewDecisionDialogProps) {
+export function ReviewDecisionDialog({ open, item, basis, onClose, onDecision }: ReviewDecisionDialogProps) {
   const [conclusion, setConclusion] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -42,6 +45,19 @@ export function ReviewDecisionDialog({ open, item, onClose, onDecision }: Review
         <Stack gap={2} sx={{ pt: 1 }}>
           <Alert severity="warning" icon={<GavelRounded />}>定位坐标仅作为离线分析证据。确认操作不会触发执法、派工或设备控制。</Alert>
           <Typography variant="body2">有效观测 {item.active_observation_count} 条，定位结果 {item.estimate_count} 份。请结合残差、条件数和不确定半径独立判断。</Typography>
+          {item.review_basis_estimate_id && !item.review_basis_stale && (
+            <Alert severity="info" variant="outlined">
+              分析员选定的复核依据：运行 #{item.review_basis_estimate_id}
+              {basis ? ` · 残差 ${formatDecimal(basis.residual_deg)}° · 不确定半径 ${formatDecimal(basis.uncertainty_radius_m, 0)} m · 条件数 ${formatDecimal(basis.condition_number, 1)}` : ''}
+              。请以该结果及其残差证据为复核对象。
+            </Alert>
+          )}
+          {item.review_basis_estimate_id && item.review_basis_stale && (
+            <Alert severity="warning" variant="outlined">复核依据（运行 #{item.review_basis_estimate_id}）已失效：观测集变化或案例被退回后尚未重新选定依据，请退回分析流程。</Alert>
+          )}
+          {!item.review_basis_estimate_id && (
+            <Alert severity="warning" variant="outlined">该案例没有已选定的复核依据，无法确认定位结论。</Alert>
+          )}
           <TextField
             label="人工复核结论"
             multiline minRows={3} value={conclusion}
@@ -64,4 +80,3 @@ export function ReviewDecisionDialog({ open, item, onClose, onDecision }: Review
     </Dialog>
   )
 }
-
