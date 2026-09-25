@@ -40,7 +40,7 @@ func main() {
 	authService := service.NewAuthService(supportRepo, cfg.JWTSecret)
 	stationService := service.NewStationService(stationRepo)
 	observationService := service.NewObservationService(observationRepo, stationRepo, caseRepo)
-	caseService := service.NewCaseService(caseRepo)
+	caseService := service.NewCaseService(caseRepo, estimateRepo)
 	estimateService := service.NewEstimateService(estimateRepo, observationRepo, caseRepo, cfg.GeometryConditionLimit)
 	auditService := service.NewAuditService(supportRepo)
 

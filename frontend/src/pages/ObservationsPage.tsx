@@ -58,6 +58,7 @@ export function ObservationsPage() {
     setSaving(true)
     try {
       await createObservation(form)
+      await loadCases()
       setCreateOpen(false)
     } finally {
       setSaving(false)
@@ -69,6 +70,7 @@ export function ObservationsPage() {
     setSaving(true)
     try {
       await excludeObservation(excludeTarget.id, excludeReason)
+      await loadCases()
       setExcludeTarget(null)
       setExcludeReason('')
     } finally {
@@ -96,6 +98,15 @@ export function ObservationsPage() {
         </TextField>
         {validation && <Alert severity={validation.invalid ? 'warning' : 'success'}>{validation.valid} 条可用，{validation.invalid} 条需处理</Alert>}
       </section>
+
+      {selectedCase && selectedCase.review_basis_estimate_id !== null && !selectedCase.review_basis_valid && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          观测集合已变化，原复核依据（运行 #{selectedCase.review_basis_estimate_id}）已失效。案例不能提交复核，请到三角定位页重新运行并重新选定依据。
+        </Alert>
+      )}
+      {selectedCase?.case_status === 'pending_review' && (
+        <Alert severity="info" sx={{ mb: 2 }}>案例待复核，证据锁定：复核员确认或退回前不能新增或排除观测。</Alert>
+      )}
 
       <section className="data-section" aria-labelledby="observation-table-title">
         <Typography id="observation-table-title" component="h2" variant="h6" mb={2}>原始值与天线偏置校正</Typography>

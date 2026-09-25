@@ -78,3 +78,25 @@ func (h *CaseHandler) Transition(c *gin.Context) {
 	}
 	api.Success(c, http.StatusOK, item)
 }
+
+// SelectReviewBasis 选定案例唯一复核依据（定位结果）。
+func (h *CaseHandler) SelectReviewBasis(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	actor, ok := actorFromContext(c)
+	if !ok {
+		return
+	}
+	var request dto.SelectReviewBasisRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+	item, err := h.service.SelectReviewBasis(c.Request.Context(), id, request, actor)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.Success(c, http.StatusOK, item)
+}

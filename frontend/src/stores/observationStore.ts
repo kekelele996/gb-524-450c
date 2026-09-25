@@ -40,4 +40,3 @@ export const useObservationStore = create<ObservationState>((set, get) => ({
     return response.data
   }
 }))
-

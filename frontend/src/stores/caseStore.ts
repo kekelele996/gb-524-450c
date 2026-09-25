@@ -8,6 +8,7 @@ interface CaseState {
   load: () => Promise<void>
   createCase: (input: CaseInput) => Promise<void>
   transition: (id: number, input: CaseTransition) => Promise<void>
+  selectReviewBasis: (id: number, estimateId: number, version: number) => Promise<void>
 }
 
 export const useCaseStore = create<CaseState>((set, get) => ({
@@ -29,6 +30,9 @@ export const useCaseStore = create<CaseState>((set, get) => ({
   transition: async (id, input) => {
     await caseApi.transition(id, input)
     await get().load()
+  },
+  selectReviewBasis: async (id, estimateId, version) => {
+    await caseApi.selectReviewBasis(id, estimateId, version)
+    await get().load()
   }
 }))
-

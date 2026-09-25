@@ -3,7 +3,9 @@ import AddRounded from '@mui/icons-material/AddRounded'
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded'
 import GavelRounded from '@mui/icons-material/GavelRounded'
 import LockRounded from '@mui/icons-material/LockRounded'
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material'
+import ReplayRounded from '@mui/icons-material/ReplayRounded'
+import TaskAltRounded from '@mui/icons-material/TaskAltRounded'
+import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography } from '@mui/material'
 import { PageHeader } from '../components/common/PageHeader'
 import { ReviewDecisionDialog } from '../components/common/ReviewDecisionDialog'
 import { useAuth } from '../hooks/useAuth'
@@ -89,16 +91,24 @@ export function CasesPage() {
             <TableHead><TableRow><TableCell>案例</TableCell><TableCell>中心频率</TableCell><TableCell>状态 / 版本</TableCell><TableCell>证据完整度</TableCell><TableCell>最新定位</TableCell><TableCell align="right">操作</TableCell></TableRow></TableHead>
             <TableBody>{cases.map((item) => {
               const estimate = latestByCase.get(item.id)
+              const isAnalyzing = item.case_status === 'analyzing'
+              const basisReady = isAnalyzing && item.review_basis_estimate_id !== null && item.review_basis_valid
+              const submitBlocked = isAnalyzing && !basisReady
               return <TableRow key={item.id} hover>
                 <TableCell><strong>{item.case_code}</strong><br /><span className="secondary-text">{item.title}</span></TableCell>
                 <TableCell className="numeric">{formatFrequency(item.frequency_center_hz)}<br /><span className={`priority priority-${item.priority}`}>{item.priority === 'high' ? '高优先' : item.priority === 'low' ? '低优先' : '普通'}</span></TableCell>
                 <TableCell><span className={`case-status case-${item.case_status}`}>{item.case_status === 'closed' && <LockRounded fontSize="inherit" />} {statusLabel[item.case_status]}</span><br /><span className="secondary-text">version {item.version}</span></TableCell>
-                <TableCell className="numeric">有效观测 {item.active_observation_count} / {item.observation_count}<br />定位结果 {item.estimate_count}</TableCell>
+                <TableCell className="numeric">
+                  有效观测 {item.active_observation_count} / {item.observation_count}<br />定位结果 {item.estimate_count}
+                  <BasisStatusChip item={item} />
+                </TableCell>
                 <TableCell>{estimate ? <><strong>残差 {formatDecimal(estimate.residual_deg)}°</strong><br /><span className="secondary-text">半径 {formatDecimal(estimate.uncertainty_radius_m, 0)} m</span></> : '尚未运行'}</TableCell>
                 <TableCell align="right">
                   <Stack direction="row" justifyContent="flex-end" gap={1}>
                     {item.case_status === 'pending_review' && hasRole('reviewer', 'admin') && <Button size="small" variant="contained" startIcon={<GavelRounded />} onClick={() => setReviewTarget(item)}>复核</Button>}
-                    {canAdvance(item) && <Button size="small" variant="outlined" onClick={() => void advance(item)}>{item.case_status === 'draft' ? '开始采集' : item.case_status === 'collecting' ? '进入分析' : item.case_status === 'analyzing' ? '提交复核' : '关闭案例'}</Button>}
+                    {canAdvance(item) && (submitBlocked
+                      ? <Tooltip title={item.review_basis_estimate_id === null ? '请先在三角定位页选定一条定位结果作为复核依据' : '原复核依据已失效，请重新运行定位并重新选定'}><span><Button size="small" variant="outlined" disabled startIcon={<ReplayRounded />}>提交复核</Button></span></Tooltip>
+                      : <Button size="small" variant="outlined" startIcon={isAnalyzing ? <TaskAltRounded /> : undefined} onClick={() => void advance(item)}>{item.case_status === 'draft' ? '开始采集' : item.case_status === 'collecting' ? '进入分析' : item.case_status === 'analyzing' ? '提交复核' : '关闭案例'}</Button>)}
                   </Stack>
                 </TableCell>
               </TableRow>
@@ -125,5 +135,17 @@ export function CasesPage() {
       <ReviewDecisionDialog open={Boolean(reviewTarget)} item={reviewTarget} onClose={() => setReviewTarget(null)} onDecision={async (request) => { if (reviewTarget) await transition(reviewTarget.id, request) }} />
     </>
   )
+}
+
+// 依据状态徽标：让分析员与复核员一眼看出案例当前是否持有可用复核依据。
+function BasisStatusChip({ item }: { item: CaseSummary }) {
+  if (item.case_status !== 'analyzing' && item.case_status !== 'pending_review') return null
+  if (item.review_basis_estimate_id === null) {
+    return <Chip size="small" variant="outlined" label="未选定复核依据" sx={{ mt: 0.5 }} />
+  }
+  if (!item.review_basis_valid) {
+    return <Chip size="small" color="warning" icon={<ReplayRounded />} label={`依据已失效（运行 #${item.review_basis_estimate_id}）`} sx={{ mt: 0.5 }} />
+  }
+  return <Chip size="small" color="success" icon={<TaskAltRounded />} label={`复核依据 运行 #${item.review_basis_estimate_id}`} sx={{ mt: 0.5 }} />
 }
 

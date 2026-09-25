@@ -41,7 +41,12 @@ export function ReviewDecisionDialog({ open, item, onClose, onDecision }: Review
       <DialogContent>
         <Stack gap={2} sx={{ pt: 1 }}>
           <Alert severity="warning" icon={<GavelRounded />}>定位坐标仅作为离线分析证据。确认操作不会触发执法、派工或设备控制。</Alert>
-          <Typography variant="body2">有效观测 {item.active_observation_count} 条，定位结果 {item.estimate_count} 份。请结合残差、条件数和不确定半径独立判断。</Typography>
+          <Typography variant="body2">
+            有效观测 {item.active_observation_count} 条，定位结果 {item.estimate_count} 份。
+            {item.review_basis_estimate_id !== null
+              ? <>分析员已选定 <strong>运行 #{item.review_basis_estimate_id}</strong> 作为唯一复核依据，请结合其残差、条件数和不确定半径独立判断。</>
+              : <>本案例没有已选定的复核依据记录，请要求分析员在定位页选定后再复核。</>}
+          </Typography>
           <TextField
             label="人工复核结论"
             multiline minRows={3} value={conclusion}

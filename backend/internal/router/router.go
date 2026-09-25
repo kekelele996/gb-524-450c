@@ -57,6 +57,7 @@ func New(log *slog.Logger, authService *service.AuthService, handlers Handlers, 
 	protected.GET("/cases/:id", handlers.Case.Get)
 	protected.POST("/cases", middleware.RBAC(constants.RoleObserver, constants.RoleAnalyst, constants.RoleAdmin), handlers.Case.Create)
 	protected.POST("/cases/:id/transition", handlers.Case.Transition)
+	protected.POST("/cases/:id/review-basis", middleware.RBAC(constants.RoleAnalyst, constants.RoleAdmin), handlers.Case.SelectReviewBasis)
 
 	protected.GET("/localizations", handlers.Estimate.List)
 	protected.GET("/localizations/:id", handlers.Estimate.Get)

@@ -49,3 +49,21 @@ func CaseStatusValues() []string {
 	}
 	return values
 }
+
+// 复核依据（定位结果）失效原因。依据一旦因观测证据变化或案例退回而失效，
+// 案例必须重新运行定位并重新选定结果后才能再次提交复核。
+const (
+	ReviewBasisStaleObservationAdded    = "observation_added"
+	ReviewBasisStaleObservationExcluded = "observation_excluded"
+	ReviewBasisStaleCaseRejected        = "case_rejected"
+)
+
+// ValidReviewBasisStaleReason 判断依据失效原因是否为系统已知值。
+func ValidReviewBasisStaleReason(reason string) bool {
+	switch reason {
+	case ReviewBasisStaleObservationAdded, ReviewBasisStaleObservationExcluded, ReviewBasisStaleCaseRejected:
+		return true
+	default:
+		return false
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/datatypes"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -158,14 +159,48 @@ func seed(db *gorm.DB) error {
 			{StationID: stations[2].ID, CaseID: cases[0].ID, BearingDeg: 269.7, CorrectedBearingDeg: 269.8, SignalDBM: -64, FrequencyHz: 433920100, BandwidthHz: 12500, ObservedAt: now.Add(2 * time.Minute), Quality: constants.QualityFair, CreatedBy: users[0].ID},
 			{StationID: stations[3].ID, CaseID: cases[0].ID, BearingDeg: 205, CorrectedBearingDeg: 205, SignalDBM: -82, FrequencyHz: 433920500, BandwidthHz: 12500, ObservedAt: now.Add(3 * time.Minute), Quality: constants.QualityPoor, CreatedBy: users[0].ID},
 			{StationID: stations[0].ID, CaseID: cases[1].ID, BearingDeg: 92, CorrectedBearingDeg: 92.4, SignalDBM: -73, FrequencyHz: 868300000, BandwidthHz: 25000, ObservedAt: now, Quality: constants.QualityGood, CreatedBy: users[0].ID},
+			{StationID: stations[1].ID, CaseID: cases[1].ID, BearingDeg: 350.3, CorrectedBearingDeg: 350.0, SignalDBM: -70, FrequencyHz: 868300200, BandwidthHz: 25000, ObservedAt: now.Add(time.Minute), Quality: constants.QualityGood, CreatedBy: users[0].ID},
+			{StationID: stations[2].ID, CaseID: cases[1].ID, BearingDeg: 272.6, CorrectedBearingDeg: 272.7, SignalDBM: -68, FrequencyHz: 868299800, BandwidthHz: 25000, ObservedAt: now.Add(2 * time.Minute), Quality: constants.QualityFair, CreatedBy: users[0].ID},
 		}
 		if err := tx.Create(&observations).Error; err != nil {
+			return err
+		}
+		basisSelectedAt := now.Add(10 * time.Minute)
+		estimates := []model.LocalizationEstimate{
+			{
+				CaseID: cases[0].ID, AlgorithmVersion: "wls-bearing-v1",
+				Latitude: 31.2308, Longitude: 121.4739, UncertaintyRadiusM: 620,
+				ResidualDeg: 1.18, ConditionNumber: 8.6, GeometryDegenerate: false,
+				UsedObservationIDsJSON: datatypes.JSON([]byte(`[1,2,3,4]`)),
+				OutlierIDsJSON:         datatypes.JSON([]byte(`[]`)),
+				ResidualsJSON:          datatypes.JSON([]byte(`[{"observation_id":1,"station_code":"RX-WEST","observed_deg":90.0,"predicted_deg":90.4,"residual_deg":-0.4,"standardized":-0.32},{"observation_id":2,"station_code":"RX-SOUTH","observed_deg":0.2,"predicted_deg":0.9,"residual_deg":-0.7,"standardized":-0.46},{"observation_id":3,"station_code":"RX-EAST","observed_deg":269.8,"predicted_deg":270.9,"residual_deg":-1.1,"standardized":-1.1},{"observation_id":4,"station_code":"RX-NORTH","observed_deg":205.0,"predicted_deg":201.2,"residual_deg":3.8,"standardized":2.11}]`)),
+				InputSnapshotJSON:      datatypes.JSON([]byte(`[{"observation_id":1,"station_code":"RX-WEST","latitude":31.2304,"longitude":121.4437,"bearing_deg":90.0,"accuracy_deg":1.2,"quality_weight":1},{"observation_id":2,"station_code":"RX-SOUTH","latitude":31.2104,"longitude":121.4737,"bearing_deg":0.2,"accuracy_deg":1.5,"quality_weight":1},{"observation_id":3,"station_code":"RX-EAST","latitude":31.2304,"longitude":121.5037,"bearing_deg":269.8,"accuracy_deg":1.0,"quality_weight":0.55},{"observation_id":4,"station_code":"RX-NORTH","latitude":31.2504,"longitude":121.4737,"bearing_deg":205.0,"accuracy_deg":1.8,"quality_weight":0.2}]`)),
+				EstimateStatus:         constants.EstimateComplete, CreatedBy: users[1].ID,
+			},
+			{
+				CaseID: cases[1].ID, AlgorithmVersion: "wls-bearing-v1",
+				Latitude: 31.2296, Longitude: 121.4620, UncertaintyRadiusM: 480,
+				ResidualDeg: 0.94, ConditionNumber: 6.2, GeometryDegenerate: false,
+				UsedObservationIDsJSON: datatypes.JSON([]byte(`[5,6,7]`)),
+				OutlierIDsJSON:         datatypes.JSON([]byte(`[]`)),
+				ResidualsJSON:          datatypes.JSON([]byte(`[{"observation_id":5,"station_code":"RX-WEST","observed_deg":92.4,"predicted_deg":92.4,"residual_deg":0,"standardized":0},{"observation_id":6,"station_code":"RX-SOUTH","observed_deg":350.0,"predicted_deg":349.4,"residual_deg":0.6,"standardized":0.4},{"observation_id":7,"station_code":"RX-EAST","observed_deg":272.7,"predicted_deg":273.6,"residual_deg":-0.9,"standardized":-0.9}]`)),
+				InputSnapshotJSON:      datatypes.JSON([]byte(`[{"observation_id":5,"station_code":"RX-WEST","latitude":31.2304,"longitude":121.4437,"bearing_deg":92.4,"accuracy_deg":1.2,"quality_weight":1},{"observation_id":6,"station_code":"RX-SOUTH","latitude":31.2104,"longitude":121.4737,"bearing_deg":350.0,"accuracy_deg":1.5,"quality_weight":1},{"observation_id":7,"station_code":"RX-EAST","latitude":31.2304,"longitude":121.5037,"bearing_deg":272.7,"accuracy_deg":1.0,"quality_weight":0.55}]`)),
+				EstimateStatus:         constants.EstimateComplete, CreatedBy: users[1].ID,
+			},
+		}
+		if err := tx.Create(&estimates).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.InterferenceCase{}).Where("id = ?", cases[1].ID).Updates(map[string]any{
+			"review_basis_estimate_id": estimates[1].ID, "review_basis_valid": true,
+			"review_basis_selected_at": basisSelectedAt,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Create(&model.AuditEvent{
 			RequestID: "seed-bootstrap", UserID: users[3].ID, ActorEmail: users[3].Email,
 			Action: "system.seeded", EntityType: "system", EntityID: 1,
-			BeforeJSON: "{}", AfterJSON: `{"stations":4,"cases":2,"observations":5}`,
+			BeforeJSON: "{}", AfterJSON: `{"stations":4,"cases":2,"observations":7,"estimates":2}`,
 			CreatedAt: time.Now().UTC(),
 		}).Error
 	})

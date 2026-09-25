@@ -42,6 +42,8 @@ docker compose down -v --remove-orphans
 - 二站几何交汇和三站以上加权最小二乘使用同一确定性求解器；近平行或近共线几何明确拒绝，不返回伪精确点。
 - 当至少有四条有效观测时，可比较标准化残差并生成一次离群候选重算；原估计和候选结果都不可覆盖。
 - 案例执行 `draft -> collecting -> analyzing -> pending_review -> confirmed -> closed`；退回从 `pending_review` 回到 `analyzing`，关闭后只读。
+- 分析员必须从不可覆盖的多条定位结果中选定且仅选定一条作为复核依据；新增或排除观测会让原依据立即失效，此时案例不能提交复核，定位页会提示重新运行并重新选定。
+- 案例退回后保留上次依据编号供对照，必须重新运行定位、选定失效后产生的新结果才能再次提交；依据的选定、失效与退回全部写入不可变审计。
 - JWT、RBAC、乐观锁、事务、内存令牌桶限流、request ID、结构化日志和不可变审计贯穿业务链。
 
 ## 技术栈
@@ -102,6 +104,7 @@ docker compose down -v --remove-orphans
 | `GET` | `/api/v1/cases/:id/validate-observations` | 批量校验案例观测 |
 | `GET/POST` | `/api/v1/cases` | 案例列表与草稿创建 |
 | `POST` | `/api/v1/cases/:id/transition` | 带 version 的状态迁移 |
+| `POST` | `/api/v1/cases/:id/review-basis` | 分析员选定一条定位结果作为唯一复核依据 |
 | `GET` | `/api/v1/localizations` | 查询不可覆盖的定位历史 |
 | `POST` | `/api/v1/localizations/run` | 运行加权定位和离群候选，独立限流 |
 | `GET` | `/api/v1/audits` | 复核员/管理员查询不可变审计 |
@@ -123,6 +126,8 @@ docker compose down -v --remove-orphans
 - 后端常量和状态机：`backend/internal/constants/case.go`
 - DTO、repository、service、handler、router：`backend/internal/dto/interference_case.go`、`backend/internal/repository/interference_case.go`、`backend/internal/service/interference_case.go`、`backend/internal/handler/interference_case.go`、`backend/internal/router/router.go`
 - 前端类型、API、store、复核组件、页面：`frontend/src/types/case.ts`、`frontend/src/api/cases.ts`、`frontend/src/stores/caseStore.ts`、`frontend/src/components/common/ReviewDecisionDialog.tsx`、`frontend/src/pages/CasesPage.tsx`、`frontend/src/pages/AuditPage.tsx`
+
+复核依据失效原因 `ReviewBasisStaleReason = observation_added | observation_excluded | case_rejected` 与案例状态同处 `backend/internal/constants/case.go` 与 `frontend/src/types/case.ts`；失效门控在 `backend/internal/service/interference_case.go`，失效标记事务在 `backend/internal/repository/interference_case.go`，定位页提示与选定动作在 `frontend/src/pages/LocalizationPage.tsx` 与 `frontend/src/utils/reviewBasis.ts`。
 
 ## 定位算法与假设
 
@@ -188,6 +193,9 @@ npm --prefix frontend run build
 - 定位返回 `FREQUENCY_MISMATCH`：确认每条观测与案例中心频率的偏差不超过该观测带宽的一半。
 - 定位返回 `GEOMETRY_DEGENERATE`：增加不同方位几何的测向站，不能通过放宽显示精度规避退化证据。
 - 状态迁移返回 `CASE_VERSION_CONFLICT`：其他请求已更新案例，刷新列表后使用新 version 重试。
+- 提交复核返回 `REVIEW_BASIS_REQUIRED`：分析员还没有在三角定位页选定复核依据。
+- 提交复核或选定依据返回 `REVIEW_BASIS_STALE`：原依据已因新增/排除观测或案例退回而失效，必须重新运行定位，且只能选定失效时间之后新产生的结果。
+- 新增或排除观测返回 `CASE_EVIDENCE_LOCKED`：案例已提交复核（`pending_review`/`confirmed`），证据锁定，须等复核员退回后再操作。
 - 登录后出现 401：清除当前标签页 `sessionStorage` 后重新登录；令牌不会持久化到其他浏览器会话。
 
 ## License

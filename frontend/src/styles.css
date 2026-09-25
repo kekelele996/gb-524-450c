@@ -77,9 +77,11 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.8rem; }
 .localization-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; margin-top: 24px; align-items: start; }
 .localization-grid .plot-section { margin: 0; }
 .estimate-rail { position: sticky; top: 88px; max-height: calc(100vh - 112px); overflow: auto; padding-left: 20px; border-left: 1px solid #cdd9d1; }
-.estimate-item { width: 100%; min-height: 96px; display: grid; gap: 6px; padding: 12px; text-align: left; color: #315047; background: #fbfcf9; border: 1px solid #cbd8d0; border-radius: 4px; cursor: pointer; transition: border-color 160ms ease-out, background-color 160ms ease-out; }
+.estimate-item { width: 100%; min-height: 96px; display: grid; gap: 6px; padding: 12px; text-align: left; color: #315047; background: #fbfcf9; border: 1px solid #cbd8d0; border-radius: 4px; transition: border-color 160ms ease-out, background-color 160ms ease-out; }
 .estimate-item:hover { border-color: #5d8175; background: #f2f7f3; }
 .estimate-item.is-selected { border: 2px solid #1d5d50; background: #e4eee8; }
+.estimate-view { display: grid; gap: 6px; padding: 0; text-align: left; color: inherit; background: none; border: 0; cursor: pointer; }
+.estimate-view:focus-visible { outline: 2px solid #1d5d50; outline-offset: 2px; }
 .estimate-item-top { display: flex; justify-content: space-between; gap: 8px; }
 .estimate-item-top span { color: #a15924; font-size: 0.72rem; }
 .estimate-coordinate { font-size: 0.78rem; }

@@ -75,12 +75,20 @@ func (r *ObservationRepository) ListForCase(ctx context.Context, caseID uint, in
 
 func (r *ObservationRepository) Create(ctx context.Context, observation *model.BearingObservation, actor Actor) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&model.InterferenceCase{}).Where("id = ? AND case_status <> ?", observation.CaseID, constants.CaseClosed).Count(&count).Error; err != nil {
+		var caseRecord model.InterferenceCase
+		if err := tx.First(&caseRecord, observation.CaseID).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return api.NewError(409, "CASE_READ_ONLY", "案例不存在，不能新增观测")
+			}
 			return fmt.Errorf("check observation case: %w", err)
 		}
-		if count == 0 {
-			return api.NewError(409, "CASE_READ_ONLY", "案例不存在或已关闭，不能新增观测")
+		if caseRecord.CaseStatus == constants.CaseClosed {
+			return api.NewError(409, "CASE_READ_ONLY", "案例已关闭，不能新增观测")
+		}
+		if caseRecord.CaseStatus == constants.CasePendingReview || caseRecord.CaseStatus == constants.CaseConfirmed {
+			return api.WithDetails(api.NewError(409, "CASE_EVIDENCE_LOCKED", "案例已提交复核，证据锁定；案例退回分析后才能新增观测"), map[string]any{
+				"current": caseRecord.CaseStatus,
+			})
 		}
 		if err := tx.Create(observation).Error; err != nil {
 			return fmt.Errorf("create observation: %w", err)
@@ -88,6 +96,10 @@ func (r *ObservationRepository) Create(ctx context.Context, observation *model.B
 		audit := NewAudit(actor, "bearing_observation.created", "bearing_observation", observation.ID, nil, observation)
 		if err := tx.Create(&audit).Error; err != nil {
 			return fmt.Errorf("audit observation create: %w", err)
+		}
+		// 新增观测改变定位输入：若案例持有复核依据，则原依据立即失效。
+		if _, err := MarkReviewBasisStaleTx(tx, observation.CaseID, constants.ReviewBasisStaleObservationAdded, actor); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -113,6 +125,11 @@ func (r *ObservationRepository) Exclude(ctx context.Context, id uint, reason str
 		if caseRecord.CaseStatus == constants.CaseClosed {
 			return api.NewError(409, "CASE_READ_ONLY", "案例已关闭，观测只读")
 		}
+		if caseRecord.CaseStatus == constants.CasePendingReview || caseRecord.CaseStatus == constants.CaseConfirmed {
+			return api.WithDetails(api.NewError(409, "CASE_EVIDENCE_LOCKED", "案例已提交复核，证据锁定；案例退回分析后才能排除观测"), map[string]any{
+				"current": caseRecord.CaseStatus,
+			})
+		}
 		result := tx.Model(&model.BearingObservation{}).Where("id = ? AND quality <> ?", id, constants.QualityExcluded).Updates(map[string]any{
 			"quality": constants.QualityExcluded, "excluded_reason": reason,
 		})
@@ -128,6 +145,10 @@ func (r *ObservationRepository) Exclude(ctx context.Context, id uint, reason str
 		audit := NewAudit(actor, "bearing_observation.excluded", "bearing_observation", id, before, updated)
 		if err := tx.Create(&audit).Error; err != nil {
 			return fmt.Errorf("audit observation exclusion: %w", err)
+		}
+		// 排除观测改变定位输入：若案例持有复核依据，则原依据立即失效。
+		if _, err := MarkReviewBasisStaleTx(tx, before.CaseID, constants.ReviewBasisStaleObservationExcluded, actor); err != nil {
+			return err
 		}
 		return nil
 	})
